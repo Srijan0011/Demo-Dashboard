@@ -6,7 +6,7 @@ import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import { 
-  AlertTriangle, Wind, Truck, Activity, Droplets, Shield, Zap, TrendingDown, CheckCircle2
+  AlertTriangle, Wind, Truck, Activity, Droplets, Shield, Zap, TrendingDown, CheckCircle2, Thermometer, Droplet, MapPin
 } from 'lucide-react';
 
 const pollutionSources = [
@@ -16,13 +16,13 @@ const pollutionSources = [
   { name: 'Others', value: 10 },
 ];
 
-const COLORS = ['#06b6d4', '#ef4444', '#f59e0b', '#10b981'];
+const COLORS = ['#5E6AD2', '#EF4444', '#F59E0B', '#10B981'];
 
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.2 }
+    transition: { staggerChildren: 0.1 }
   }
 };
 
@@ -31,26 +31,55 @@ const itemVariants = {
   visible: {
     y: 0,
     opacity: 1,
-    transition: { type: 'spring', stiffness: 100 }
+    transition: { type: 'spring', stiffness: 100, damping: 20 }
   }
 };
 
+const LOCATIONS = {
+  'Raipur': { lat: 21.2514, lon: 81.6296 },
+  'Bhilai': { lat: 21.1938, lon: 81.3509 }
+};
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: '#111111', border: '1px solid rgba(255,255,255,0.08)', padding: '12px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+        <p className="text-muted mb-2" style={{ fontSize: '12px' }}>{label}</p>
+        {payload.map((entry, index) => (
+          <p key={`item-${index}`} style={{ color: entry.color, fontSize: '14px', margin: '4px 0' }}>
+            {entry.name}: {entry.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
 const App = () => {
-  const [currentData, setCurrentData] = useState(null);
-  const [hourlyData, setHourlyData] = useState([]);
+  const [activeLocation, setActiveLocation] = useState('Raipur');
+  const [currentAQI, setCurrentAQI] = useState(null);
+  const [hourlyAQI, setHourlyAQI] = useState([]);
+  const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchAQIData = async () => {
+    const fetchData = async () => {
+      setLoading(true);
       try {
-        // Fetch real-time data for Raipur
-        const res = await axios.get('https://air-quality-api.open-meteo.com/v1/air-quality?latitude=21.2333&longitude=81.6333&current=us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone&hourly=pm10,pm2_5&timezone=Asia/Kolkata');
+        const { lat, lon } = LOCATIONS[activeLocation];
         
-        setCurrentData(res.data.current);
+        // Fetch AQI
+        const aqiRes = await axios.get(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone&hourly=pm10,pm2_5&timezone=Asia/Kolkata`);
+        setCurrentAQI(aqiRes.data.current);
 
-        // Format hourly data for the last 24 hours up to current hour
-        const currentHourStr = res.data.current.time.slice(0, 13); // "YYYY-MM-DDTHH"
-        const times = res.data.hourly.time;
+        // Fetch Weather
+        const weatherRes = await axios.get(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=Asia/Kolkata`);
+        setWeatherData(weatherRes.data.current);
+
+        // Format hourly data
+        const currentHourStr = aqiRes.data.current.time.slice(0, 13);
+        const times = aqiRes.data.hourly.time;
         const currentIndex = times.findIndex(t => t.startsWith(currentHourStr));
         
         const past24Hours = [];
@@ -59,305 +88,264 @@ const App = () => {
           for (let i = startIndex; i <= currentIndex; i++) {
             past24Hours.push({
               time: new Date(times[i]).getHours() + ':00',
-              pm10: res.data.hourly.pm10[i],
-              pm2_5: res.data.hourly.pm2_5[i],
+              pm10: aqiRes.data.hourly.pm10[i],
+              pm2_5: aqiRes.data.hourly.pm2_5[i],
             });
           }
         }
-        setHourlyData(past24Hours);
-        setLoading(false);
+        setHourlyAQI(past24Hours);
       } catch (error) {
-        console.error("Error fetching AQI data", error);
-        setLoading(false);
+        console.error("Error fetching data", error);
       }
+      setLoading(false);
     };
 
-    fetchAQIData();
-  }, []);
+    fetchData();
+  }, [activeLocation]);
 
-  if (loading) {
-    return (
-      <div className="container flex-center" style={{ minHeight: '100vh' }}>
-        <h2 className="gradient-text animate-pulse">Loading Live Data for Raipur-Bhilai...</h2>
-      </div>
-    );
-  }
+  // Handle panel mouse move for interactive radial gradient
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    e.currentTarget.style.setProperty('--mouse-x', `${x}%`);
+    e.currentTarget.style.setProperty('--mouse-y', `${y}%`);
+  };
 
-  // Format data for radar chart (Normalizing somewhat for visual purposes)
-  const radarData = currentData ? [
-    { subject: 'PM2.5', A: currentData.pm2_5, fullMark: 150 },
-    { subject: 'PM10', A: currentData.pm10, fullMark: 200 },
-    { subject: 'Ozone', A: currentData.ozone, fullMark: 100 },
-    { subject: 'NO2', A: currentData.nitrogen_dioxide, fullMark: 100 },
-    { subject: 'SO2', A: currentData.sulphur_dioxide, fullMark: 50 },
+  const radarData = currentAQI ? [
+    { subject: 'PM2.5', A: currentAQI.pm2_5, fullMark: 150 },
+    { subject: 'PM10', A: currentAQI.pm10, fullMark: 200 },
+    { subject: 'Ozone', A: currentAQI.ozone, fullMark: 100 },
+    { subject: 'NO2', A: currentAQI.nitrogen_dioxide, fullMark: 100 },
+    { subject: 'SO2', A: currentAQI.sulphur_dioxide, fullMark: 50 },
   ] : [];
 
   return (
     <div className="container">
       {/* Header */}
       <motion.header 
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.4 }}
         className="flex-between mb-8"
       >
         <div>
-          <h1 className="gradient-text mb-2" style={{ fontSize: '2.5rem' }}>Raipur-Bhilai EcoTransit</h1>
-          <p className="text-muted">Live Heavy Vehicle Dust Reduction Dashboard</p>
+          <h1 className="mb-2" style={{ fontSize: '2rem' }}>EcoTransit Control</h1>
+          <p className="text-muted">Heavy Vehicle Environmental Impact Dashboard</p>
         </div>
-        <motion.div 
-          whileHover={{ scale: 1.05 }}
-          className="glass-panel" 
-          style={{ textAlign: 'center', padding: '1rem 2rem' }}
-        >
-          <div className="stat-label">Live US AQI</div>
-          <div className="stat-value text-danger flex-center gap-2">
-            <Activity className="animate-pulse" />
-            {currentData?.us_aqi || '--'}
+        
+        <div className="flex-center gap-4">
+          <div className="tab-container">
+            {Object.keys(LOCATIONS).map(loc => (
+              <button 
+                key={loc}
+                className={`tab ${activeLocation === loc ? 'active' : ''}`}
+                onClick={() => setActiveLocation(loc)}
+              >
+                {loc}
+              </button>
+            ))}
           </div>
-          <div className={`badge ${currentData?.us_aqi > 150 ? 'danger' : 'warning'}`}>
-            {currentData?.us_aqi > 150 ? 'UNHEALTHY' : 'MODERATE'}
-          </div>
-        </motion.div>
+        </div>
       </motion.header>
 
-      {/* Section 1: The Pain Point */}
-      <motion.section 
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="mb-8"
-      >
-        <motion.h2 variants={itemVariants} className="mb-6 flex-center gap-2" style={{ justifyContent: 'flex-start' }}>
-          <AlertTriangle className="text-danger" /> The Challenge: Live Data
-        </motion.h2>
-        
-        <motion.div variants={containerVariants} className="grid-cols-3 mb-6">
-          <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-panel">
-            <Truck className="mb-4 text-info" size={32} />
-            <div className="stat-value">15,000+</div>
-            <div className="stat-label">Heavy Trucks Daily</div>
-            <p className="text-muted mt-2" style={{ fontSize: '0.875rem' }}>Transporting coal, iron ore, and sponge iron.</p>
-          </motion.div>
-          <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-panel">
-            <Wind className="mb-4 text-danger" size={32} />
-            <div className="stat-value">{currentData?.pm10} <span style={{fontSize: '1rem', color: '#94a3b8'}}>µg/m³</span></div>
-            <div className="stat-label">Current PM10 Level</div>
-            <p className="text-muted mt-2" style={{ fontSize: '0.875rem' }}>Extremely high particulate matter due to resuspended dust.</p>
-          </motion.div>
-          <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-panel">
-            <AlertTriangle className="mb-4 text-warning" size={32} color="#f59e0b" />
-            <div className="stat-value">{currentData?.pm2_5} <span style={{fontSize: '1rem', color: '#94a3b8'}}>µg/m³</span></div>
-            <div className="stat-label">Current PM2.5 Level</div>
-            <p className="text-muted mt-2" style={{ fontSize: '0.875rem' }}>Fine particles from vehicle exhaust and friction.</p>
-          </motion.div>
-        </motion.div>
+      {loading ? (
+        <div className="flex-center" style={{ minHeight: '60vh' }}>
+          <Activity className="animate-pulse" size={32} style={{ color: 'var(--text-secondary)' }} />
+        </div>
+      ) : (
+        <motion.div variants={containerVariants} initial="hidden" animate="visible">
+          
+          {/* Environment Overview (Weather & AQI) */}
+          <div className="grid-cols-4 mb-8">
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove}>
+              <div className="flex-between mb-4">
+                <span className="stat-label flex-start gap-2"><Activity size={14} /> US AQI</span>
+                <span className={`badge ${currentAQI?.us_aqi > 150 ? 'danger' : currentAQI?.us_aqi > 100 ? 'warning' : 'success'}`}>
+                  {currentAQI?.us_aqi > 150 ? 'Unhealthy' : currentAQI?.us_aqi > 100 ? 'Moderate' : 'Good'}
+                </span>
+              </div>
+              <div className="stat-value">{currentAQI?.us_aqi || '--'}</div>
+            </motion.div>
+            
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove}>
+              <div className="stat-label flex-start gap-2 mb-4"><Thermometer size={14} /> Temperature</div>
+              <div className="stat-value">{weatherData?.temperature_2m}<span className="stat-unit">°C</span></div>
+            </motion.div>
 
-        <motion.div variants={containerVariants} className="grid-cols-3">
-          <motion.div variants={itemVariants} className="glass-panel">
-            <h3 className="mb-4">PM Pollution Sources</h3>
-            <div style={{ height: '250px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pollutionSources}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {pollutionSources.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="text-center text-muted" style={{fontSize: '0.8rem'}}>35% attributed to Transport</div>
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove}>
+              <div className="stat-label flex-start gap-2 mb-4"><Droplet size={14} /> Humidity</div>
+              <div className="stat-value">{weatherData?.relative_humidity_2m}<span className="stat-unit">%</span></div>
+            </motion.div>
+
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove}>
+              <div className="stat-label flex-start gap-2 mb-4"><Wind size={14} /> Wind Speed</div>
+              <div className="stat-value">{weatherData?.wind_speed_10m}<span className="stat-unit">km/h</span></div>
+            </motion.div>
+          </div>
+
+          {/* Section 1: The Challenge */}
+          <motion.div variants={itemVariants} className="flex-start gap-2 mb-4 text-muted">
+            <AlertTriangle size={16} /> <h2 style={{ fontSize: '1rem', fontWeight: 500 }}>Live Particulate Data</h2>
           </motion.div>
           
-          <motion.div variants={itemVariants} className="glass-panel" style={{ gridColumn: 'span 2' }}>
-            <h3 className="mb-4">24-Hour PM Trend (µg/m³)</h3>
-            <div style={{ height: '250px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={hourlyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis dataKey="time" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
-                  <Legend />
-                  <Line type="monotone" dataKey="pm10" stroke="#ef4444" strokeWidth={3} dot={false} activeDot={{ r: 8 }} />
-                  <Line type="monotone" dataKey="pm2_5" stroke="#f59e0b" strokeWidth={3} dot={false} activeDot={{ r: 8 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="grid-cols-3 mb-8">
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove} style={{ gridColumn: 'span 2' }}>
+              <div className="flex-between mb-6">
+                <div>
+                  <h3 style={{ fontSize: '1.25rem' }}>24-Hour PM Trend</h3>
+                  <p className="text-muted" style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Hourly concentration in µg/m³</p>
+                </div>
+              </div>
+              <div style={{ height: '300px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={hourlyAQI} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: '#71717A', fontSize: 12 }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717A', fontSize: 12 }} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+                    <Line type="monotone" name="PM10" dataKey="pm10" stroke="#EF4444" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#EF4444', stroke: '#000', strokeWidth: 2 }} />
+                    <Line type="monotone" name="PM2.5" dataKey="pm2_5" stroke="#F59E0B" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#F59E0B', stroke: '#000', strokeWidth: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove}>
+              <h3 className="mb-2" style={{ fontSize: '1.25rem' }}>Current Levels</h3>
+              <p className="text-muted mb-6" style={{ fontSize: '0.8125rem' }}>Primary transport pollutants</p>
+              
+              <div className="mb-6">
+                <div className="flex-between mb-2">
+                  <span className="text-muted text-sm" style={{ fontSize: '0.875rem' }}>PM10 (Dust)</span>
+                  <span className="text-danger font-medium">{currentAQI?.pm10} µg/m³</span>
+                </div>
+                <div style={{ height: '4px', background: 'var(--bg-secondary)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min((currentAQI?.pm10 / 200) * 100, 100)}%`, background: 'var(--danger)' }}></div>
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <div className="flex-between mb-2">
+                  <span className="text-muted text-sm" style={{ fontSize: '0.875rem' }}>PM2.5 (Exhaust)</span>
+                  <span className="text-warning font-medium">{currentAQI?.pm2_5} µg/m³</span>
+                </div>
+                <div style={{ height: '4px', background: 'var(--bg-secondary)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min((currentAQI?.pm2_5 / 100) * 100, 100)}%`, background: 'var(--warning)' }}></div>
+                </div>
+              </div>
+
+              <h3 className="mb-4" style={{ fontSize: '1rem', marginTop: '2rem' }}>Pollution Sources</h3>
+              <div style={{ height: '140px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pollutionSources} cx="50%" cy="50%" innerRadius={40} outerRadius={60} stroke="none" dataKey="value">
+                      {pollutionSources.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Section 2: Solution */}
+          <motion.div variants={itemVariants} className="flex-start gap-2 mb-4 mt-8 text-muted">
+            <Zap size={16} /> <h2 style={{ fontSize: '1rem', fontWeight: 500 }}>System Optimization</h2>
           </motion.div>
+          
+          <div className="grid-cols-2 mb-8">
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove}>
+              <h3 className="mb-6 flex-start gap-2" style={{ fontSize: '1.25rem' }}>
+                <Shield size={18} className="text-info" /> Mitigation Tech
+              </h3>
+              <ul className="feature-list">
+                <li>
+                  <CheckCircle2 size={16} className="feature-icon" />
+                  <div>
+                    <strong style={{ fontSize: '0.9375rem', display: 'block', marginBottom: '4px' }}>Coated Vinyl Tarps</strong>
+                    <p className="text-muted" style={{ fontSize: '0.8125rem', lineHeight: 1.5 }}>100% top load coverage, preventing wind-blown material spillage at highway speeds.</p>
+                  </div>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="feature-icon" />
+                  <div>
+                    <strong style={{ fontSize: '0.9375rem', display: 'block', marginBottom: '4px' }}>IoT Dust Sensors</strong>
+                    <p className="text-muted" style={{ fontSize: '0.8125rem', lineHeight: 1.5 }}>Actively monitoring particulate outflow in the vehicle's aerodynamic wake.</p>
+                  </div>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="feature-icon" />
+                  <div>
+                    <strong style={{ fontSize: '0.9375rem', display: 'block', marginBottom: '4px' }}>Micro-Misting Nozzles</strong>
+                    <p className="text-muted" style={{ fontSize: '0.8125rem', lineHeight: 1.5 }}>Sprays binder mist over rear wheels when high dust is detected, settling it instantly.</p>
+                  </div>
+                </li>
+              </ul>
+            </motion.div>
+
+            <motion.div variants={itemVariants} className="glass-panel" onMouseMove={handleMouseMove}>
+              <h3 className="mb-2 text-center" style={{ fontSize: '1.25rem' }}>SmartMist Interactive Simulation</h3>
+              <p className="text-center text-muted mb-6" style={{fontSize: '0.8125rem'}}>Hover to activate suppression system</p>
+              
+              <div className="tech-diagram flex-center" style={{ height: '220px' }}>
+                <motion.div 
+                  whileHover="hovered"
+                  initial="initial"
+                  className="flex-center" 
+                  style={{ position: 'relative', cursor: 'crosshair', width: '100%', height: '100%' }}
+                >
+                  {/* Truck Body */}
+                  <div style={{
+                    width: '140px', height: '60px', background: '#27272A', borderRadius: '4px 0 0 4px',
+                    borderRight: '3px solid var(--danger)', position: 'relative', zIndex: 2
+                  }}>
+                    {/* Wheels */}
+                    <div style={{ position: 'absolute', bottom: '-12px', left: '16px', width: '24px', height: '24px', background: '#09090B', borderRadius: '50%', border: '2px solid #52525B' }}></div>
+                    <div style={{ position: 'absolute', bottom: '-12px', right: '16px', width: '24px', height: '24px', background: '#09090B', borderRadius: '50%', border: '2px solid #52525B' }}></div>
+                    
+                    <div className="sensor-beam" style={{ right: '-90px', top: '10px', height: '20px', width: '90px', zIndex: 1 }}></div>
+                    
+                    {/* Dust (Default state) */}
+                    <motion.div variants={{
+                      initial: { opacity: 1 },
+                      hovered: { opacity: 0, transition: { duration: 0.3 } }
+                    }}>
+                      <div style={{ position: 'absolute', right: '-40px', bottom: '-10px', color: 'rgba(245, 158, 11, 0.4)', fontSize: '24px', animation: 'float 2s infinite', filter: 'blur(1px)' }}>☁️</div>
+                      <div style={{ position: 'absolute', right: '-20px', bottom: '10px', color: 'rgba(245, 158, 11, 0.4)', fontSize: '18px', animation: 'float 1.5s infinite', filter: 'blur(1px)' }}>☁️</div>
+                    </motion.div>
+
+                    {/* Mist (Hover state) */}
+                    <motion.div variants={{
+                      initial: { opacity: 0 },
+                      hovered: { opacity: 1, transition: { duration: 0.2 } }
+                    }}>
+                      <div className="mist-particle" style={{ right: '-15px', bottom: '-5px', animationDelay: '0s' }}></div>
+                      <div className="mist-particle" style={{ right: '-25px', bottom: '5px', animationDelay: '0.2s' }}></div>
+                      <div className="mist-particle" style={{ right: '-10px', bottom: '15px', animationDelay: '0.4s' }}></div>
+                      <div className="mist-particle" style={{ right: '-30px', bottom: '10px', animationDelay: '0.6s' }}></div>
+                      <div className="mist-particle" style={{ right: '-20px', bottom: '20px', animationDelay: '0.8s' }}></div>
+                    </motion.div>
+                  </div>
+                  
+                  <div style={{ position: 'absolute', right: '20px', top: '20px' }}>
+                    <motion.div 
+                      variants={{ initial: { opacity: 0, scale: 0.9 }, hovered: { opacity: 1, scale: 1 } }}
+                      className="badge success"
+                    >
+                      <Zap size={12} /> Activated
+                    </motion.div>
+                  </div>
+                </motion.div>
+              </div>
+            </motion.div>
+          </div>
+          
         </motion.div>
-      </motion.section>
-
-      {/* Section 2: The Solution & Radar */}
-      <motion.section 
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true, amount: 0.1 }}
-        transition={{ duration: 0.8 }}
-        className="mb-8 mt-8"
-      >
-        <h2 className="mb-6 flex-center gap-2 gradient-text" style={{ justifyContent: 'flex-start' }}>
-          <Zap /> The Optimization: AeroSeal & SmartMist
-        </h2>
-        
-        <div className="grid-cols-3">
-          <motion.div whileHover={{ scale: 1.02 }} className="glass-panel" style={{ gridColumn: 'span 2' }}>
-            <div className="grid-cols-2">
-              <div>
-                <h3 className="mb-4 flex-center gap-2" style={{ justifyContent: 'flex-start' }}>
-                  <Shield className="text-success" /> Material Solution
-                </h3>
-                <ul className="feature-list">
-                  <li>
-                    <CheckCircle2 className="feature-icon" />
-                    <div>
-                      <strong>Coated Vinyl Tarps</strong>
-                      <p className="text-muted" style={{ fontSize: '0.875rem' }}>100% top load coverage, preventing wind-blown material spillage at highway speeds.</p>
-                    </div>
-                  </li>
-                  <li>
-                    <CheckCircle2 className="feature-icon" />
-                    <div>
-                      <strong>EPDM Rubber Gaskets</strong>
-                      <p className="text-muted" style={{ fontSize: '0.875rem' }}>Tailgate seals completely stop fine particulate leakage from the back.</p>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="mb-4 flex-center gap-2" style={{ justifyContent: 'flex-start' }}>
-                  <Droplets className="text-info" /> Technology Solution
-                </h3>
-                <ul className="feature-list">
-                  <li>
-                    <CheckCircle2 className="feature-icon" />
-                    <div>
-                      <strong>IoT Dust Sensors</strong>
-                      <p className="text-muted" style={{ fontSize: '0.875rem' }}>Actively monitoring particulate outflow in the vehicle's aerodynamic wake.</p>
-                    </div>
-                  </li>
-                  <li>
-                    <CheckCircle2 className="feature-icon" />
-                    <div>
-                      <strong>Micro-Misting Nozzles</strong>
-                      <p className="text-muted" style={{ fontSize: '0.875rem' }}>Sprays binder mist over rear wheels when high dust is detected, settling it instantly.</p>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-            
-            {/* Tech Diagram Animation */}
-            <div className="mt-6 tech-diagram" style={{ padding: '1rem' }}>
-              <h4 className="mb-2 text-center text-muted">SmartMist Interactive Simulation</h4>
-              <p className="text-center text-muted mb-4" style={{fontSize: '0.75rem'}}>Hover over the truck to activate dust suppression!</p>
-              <motion.div 
-                whileHover="hovered"
-                initial="initial"
-                className="flex-center" 
-                style={{ height: '120px', position: 'relative', cursor: 'crosshair' }}
-              >
-                <div style={{
-                  width: '150px', height: '80px', background: '#334155', borderRadius: '8px 0 0 8px',
-                  borderRight: '4px solid #ef4444', position: 'relative'
-                }}>
-                  <div style={{ position: 'absolute', bottom: '-15px', left: '20px', width: '30px', height: '30px', background: '#1e293b', borderRadius: '50%', border: '2px solid #94a3b8' }}></div>
-                  <div style={{ position: 'absolute', bottom: '-15px', right: '20px', width: '30px', height: '30px', background: '#1e293b', borderRadius: '50%', border: '2px solid #94a3b8' }}></div>
-                  
-                  {/* Sensor Beam */}
-                  <div className="sensor-beam" style={{ right: '-80px', top: '10px', height: '20px', width: '80px' }}></div>
-                  
-                  {/* Dust vs Mist - Controlled by hover */}
-                  <motion.div variants={{
-                    initial: { opacity: 1 },
-                    hovered: { opacity: 0, transition: { duration: 0.5 } }
-                  }}>
-                    <div style={{ position: 'absolute', right: '-40px', bottom: '0', color: '#f59e0b', fontSize: '24px', animation: 'float 2s infinite' }}>☁️</div>
-                    <div style={{ position: 'absolute', right: '-20px', bottom: '20px', color: '#f59e0b', fontSize: '16px', animation: 'float 1.5s infinite' }}>☁️</div>
-                  </motion.div>
-
-                  <motion.div variants={{
-                    initial: { opacity: 0 },
-                    hovered: { opacity: 1 }
-                  }}>
-                    <div className="mist-particle" style={{ right: '-10px', bottom: '-10px', animationDelay: '0s' }}></div>
-                    <div className="mist-particle" style={{ right: '-20px', bottom: '0px', animationDelay: '0.2s' }}></div>
-                    <div className="mist-particle" style={{ right: '-5px', bottom: '10px', animationDelay: '0.4s' }}></div>
-                    <div className="mist-particle" style={{ right: '-15px', bottom: '5px', animationDelay: '0.6s' }}></div>
-                  </motion.div>
-                </div>
-                
-                <div style={{ marginLeft: '100px' }}>
-                  <motion.div 
-                    variants={{ initial: { opacity: 0 }, hovered: { opacity: 1 } }}
-                    className="badge success"
-                  >
-                    System Activated!
-                  </motion.div>
-                </div>
-              </motion.div>
-            </div>
-          </motion.div>
-
-          <motion.div whileHover={{ scale: 1.02 }} className="glass-panel">
-            <h3 className="mb-4 text-center">Live Pollutant Radar</h3>
-            <p className="text-center text-muted" style={{fontSize: '0.75rem', marginBottom: '1rem'}}>Current Concentration Profile</p>
-            <div style={{ height: '250px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                  <PolarGrid stroke="rgba(255,255,255,0.2)" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
-                  <Radar name="Concentration" dataKey="A" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.6} />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-          </motion.div>
-        </div>
-      </motion.section>
-
-      {/* Section 3: Impact */}
-      <motion.section 
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6 }}
-        className="mb-8"
-      >
-        <h2 className="mb-6 flex-center gap-2" style={{ justifyContent: 'flex-start' }}>
-          <TrendingDown className="text-success" /> Projected Impact & Cost
-        </h2>
-        
-        <div className="grid-cols-3">
-          <motion.div whileHover={{ y: -5 }} className="glass-panel" style={{ textAlign: 'center' }}>
-            <div className="stat-value text-success">~60%</div>
-            <div className="stat-label">Reduction in Wake Dust</div>
-          </motion.div>
-          <motion.div whileHover={{ y: -5 }} className="glass-panel" style={{ textAlign: 'center' }}>
-            <div className="stat-value text-info">₹ 45,000</div>
-            <div className="stat-label">Est. Cost Per Vehicle</div>
-          </motion.div>
-          <motion.div whileHover={{ y: -5 }} className="glass-panel" style={{ textAlign: 'center' }}>
-            <div className="stat-value text-warning">6 Months</div>
-            <div className="stat-label">Pilot Implementation Timeline</div>
-          </motion.div>
-        </div>
-      </motion.section>
-      
-      <footer className="text-center text-muted mb-8" style={{ fontSize: '0.875rem' }}>
-        Dashboard designed for the Raipur-Bhilai environmental optimization initiative.
-      </footer>
+      )}
     </div>
   );
 };
