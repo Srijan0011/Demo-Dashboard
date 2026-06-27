@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --accent-cyan: #06b6d4;
+  --accent-emerald: #10b981;
+  --accent-red: #ef4444;
+  --glass-bg: rgba(30, 41, 59, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  background-image: 
+    radial-gradient(circle at 15% 50%, rgba(6, 182, 212, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+  padding: 1.5rem;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Typography */
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-danger { color: var(--accent-red); }
+.text-success { color: var(--accent-emerald); }
+.text-info { color: var(--accent-cyan); }
+.text-muted { color: var(--text-secondary); }
+
+/* Layout Utilities */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.grid-cols-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.grid-cols-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.gap-2 { gap: 0.5rem; }
+.gap-4 { gap: 1rem; }
+.gap-6 { gap: 1.5rem; }
+.gap-8 { gap: 2rem; }
+
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+.mb-8 { margin-bottom: 2rem; }
+.mt-8 { margin-top: 2rem; }
+
+/* Custom Elements */
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin: 0.5rem 0;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.badge.danger { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+.badge.success { background: rgba(16, 185, 129, 0.2); color: var(--accent-emerald); }
+
+.feature-list {
+  list-style: none;
+}
+.feature-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.feature-icon {
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.1);
+  padding: 0.5rem;
+  border-radius: 8px;
+}
+
+/* Animations */
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
+
+.tech-diagram {
+  background: rgba(0,0,0,0.2);
+  border-radius: 12px;
+  padding: 2rem;
+  position: relative;
+  overflow: hidden;
+  border: 1px dashed rgba(255,255,255,0.1);
+}
+
+.sensor-beam {
+  position: absolute;
+  background: linear-gradient(90deg, rgba(6,182,212,0) 0%, rgba(6,182,212,0.5) 100%);
+  height: 40px;
+  width: 100px;
+  clip-path: polygon(0 50%, 100% 0, 100% 100%);
+  animation: scan 3s infinite linear;
+}
+
+@keyframes scan {
+  0% { opacity: 0; transform: translateX(-20px); }
+  50% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(20px); }
+}
+
+.mist-particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  animation: float 2s infinite ease-out;
+  opacity: 0;
+}
+
+@keyframes float {
+  0% { transform: translateY(0) scale(1); opacity: 0.8; }
+  100% { transform: translateY(20px) scale(2); opacity: 0; }
+}
