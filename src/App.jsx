@@ -130,7 +130,7 @@ const App = () => {
         className="flex-between mb-8"
       >
         <div>
-          <h1 className="mb-2" style={{ fontSize: '2rem' }}>EcoTransit Control</h1>
+          <h1 className="mb-2" style={{ fontSize: '2rem' }}>AeroShield Control</h1>
           <p className="text-muted">Heavy Vehicle Environmental Impact Dashboard</p>
         </div>
         
